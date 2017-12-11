@@ -29,7 +29,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 	long_description = f.read()
 
 def install_bluetooth():
-	p = subprocess.call(['sudo', 'apt-get', 'install', 'bluetooth', 'libbluetooth-dev'])
+	p = subprocess.call(['sudo', 'apt-get', '-y', 'install', 'bluetooth', 'libbluetooth-dev'])
 
 def custom_command():
 	directory = os.path.dirname(servicefile)
