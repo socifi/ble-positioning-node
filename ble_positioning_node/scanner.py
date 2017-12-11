@@ -43,7 +43,7 @@ def main(args=None):
 
 	handler = CMRESHandler(	hosts=LOG_CONN_POINTS,
 				auth_type=CMRESHandler.AuthType.NO_AUTH,
-#				use_ssl=True,
+				use_ssl=True,
 				es_index_name="beacon-scanner")
 
 	scan = BLEScanner(handler, config)
