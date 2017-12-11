@@ -42,7 +42,7 @@ class BLEScanner:
 		self.beacon_statistics = dict()
 		self.beacon_list = dict()
 		self.beacon_list_age = time.time()
-		self.config = config
+		self.fconfig = config
 		FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 		logging.basicConfig(format=FORMAT,level=self.log_level)
 		self.state_update("beacon-unknown")
@@ -53,10 +53,10 @@ class BLEScanner:
 	#####################################
 
 	def node_register(self):
-		if(self.config.has_option('Communication', 'registered')):
+		if(self.fconfig.has_option('Communication', 'registered')):
 			return
 
-		url = self.config.get('Communication', 'registration')
+		url = self.fconfig.get('Communication', 'registration')
 		payload = """------WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="userId"
 
@@ -69,28 +69,28 @@ Content-Disposition: form-data; name="brandId"
 Content-Disposition: form-data; name="mac"
 
 %s
-""" % (	self.config.get('User', 'user_id'),
-	self.config.get('User', 'brand_id'),
+""" % (	self.fconfig.get('User', 'user_id'),
+	self.fconfig.get('User', 'brand_id'),
 	self.mac)
 
-		if(self.config.has_option('User', 'group_id')):
+		if(self.fconfig.has_option('User', 'group_id')):
 			payload += """------WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="groupId"
 
 %s
-""" % (self.config.get('User', 'group_id'))
-		if(self.config.has_option('User', 'name')):
+""" % (self.fconfig.get('User', 'group_id'))
+		if(self.fconfig.has_option('User', 'name')):
 			payload += """------WebKitFormBoundary7MA4YWxkTrZu0gW--
 Content-Disposition: form-data; name="name"
 
 %s
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
-""" % (	self.config.get('User', 'name'))
+""" % (	self.fconfig.get('User', 'name'))
 		print payload
 
 		headers = {
 			'content-type': "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW",
-			'Authorization': "Bearer "+self.config.get('User', 'user_key'),
+			'Authorization': "Bearer "+self.fconfig.get('User', 'user_key'),
 			'Cache-Control': "no-cache"
 		}
 
@@ -101,12 +101,14 @@ Content-Disposition: form-data; name="name"
 		if('errors' in s and s['errors']['code'] == 'mac-already-registered'):
 			defined = True
 		if(response.status_code == requests.codes.ok or defined == True):
-			self.config.set('Communication', 'registered', 'true')
-			self.config.write(open(self.config.file, 'wb'))
+			self.fconfig.set('Communication', 'registered', 'true')
+			self.fconfig.write(open(self.fconfig.file, 'wb'))
 
 
 	def config_get(self):
-		r = requests.get(self.config.get('Communication', 'configuration')+"?mac="+self.mac)
+		print(self.fconfig.get('Communication', 'configuration'))
+		print(self.fconfig.get('Communication', 'registration'))
+		r = requests.get(self.fconfig.get('Communication', 'configuration')+"?mac="+self.mac)
 		if r.status_code != 200:
 			timestamp = time.time()
 			self.log.critical("Error getting config. Time: %d. Location: %s. Cause of accident: unknown. "
