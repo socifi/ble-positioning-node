@@ -78,7 +78,7 @@ Content-Disposition: form-data; name="mac"
 Content-Disposition: form-data; name="groupId"
 
 %s
-"""
+""" % (self.config.get('User', 'group_id'))
 		if(self.config.has_option('User', 'name')):
 			payload += """------WebKitFormBoundary7MA4YWxkTrZu0gW--
 Content-Disposition: form-data; name="name"
@@ -86,6 +86,7 @@ Content-Disposition: form-data; name="name"
 %s
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 """ % (	self.config.get('User', 'name'))
+		print payload
 
 		headers = {
 			'content-type': "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW",
@@ -95,8 +96,11 @@ Content-Disposition: form-data; name="name"
 
 		response = requests.request("POST", url, data=payload, headers=headers)
 
-		print(response.text)
-		if(response.status_code == requests.codes.ok):
+		s = json.loads(response.text)
+		defined = False
+		if('errors' in s and s['errors']['code'] == 'mac-already-registered'):
+			defined = True
+		if(response.status_code == requests.codes.ok or defined == True):
 			self.config.set('Communication', 'registered', 'true')
 			self.config.write(open(self.config.file, 'wb'))
 
@@ -106,7 +110,7 @@ Content-Disposition: form-data; name="name"
 		if r.status_code != 200:
 			timestamp = time.time()
 			self.log.critical("Error getting config. Time: %d. Location: %s. Cause of accident: unknown. "
-					  "Should someone find this record perhaps it will shed light as to what happened here." % (timestamp, self.mac), extra={'timestamp':timestamp, 'mac':self.mac}	)
+					  "Should someone find this record perhaps it will shed light as to what happened here." % (timestamp, self.mac), extra={'timestamp':timestamp, 'mac':self.mac, 'errortext': r.text}	)
 			sys.exit(1)
 
 		tmp = json.loads(r.text)

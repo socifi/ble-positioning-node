@@ -64,7 +64,7 @@ class CustomEggInfoCommand(egg_info):
 
 setup(
 	name='Ble Positioning Node',
-	version='0.1.0',
+	version='0.1.1',
 	description='Beacons Positioning Node is intended as bluetooth signal detector. It collects rssi of each mac address and sends the data to kinesis queue for position calculation.',
 	long_description=long_description,
 	url='https://github.com/socifi',
