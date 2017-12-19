@@ -85,7 +85,7 @@ setup(
 	},
 	keywords='ble bluetooth detection',
 	packages=[name],
-	install_requires=['requests', 'boto3', 'schedule', 'psutil', 'CMRESHandler', 'pybluez'],
+	install_requires=['requests', 'boto3', 'schedule', 'psutil', 'CMRESHandler', 'pybluez', 'ntplib'],
 	entry_points={
 		'console_scripts': [
 			name+' = '+name+'.scanner:main',
