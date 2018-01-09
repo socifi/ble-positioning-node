@@ -26,6 +26,7 @@ import ConfigParser
 import pprint as pp
 import bluetooth._bluetooth as bluez
 from logstash_async.handler import AsynchronousLogstashHandler
+from ble_positioning_node.logstash_formatter import ErrorFormatter
 
 ###################
 # End of fine art #
@@ -34,12 +35,13 @@ from logstash_async.handler import AsynchronousLogstashHandler
 LE_META_EVENT = 0x3e
 OGF_LE_CTL = 0x08
 OCF_LE_SET_SCAN_ENABLE = 0x000C
-OCF_LE_SET_SCAN_ENABLE = 0x000C
 EVT_LE_CONN_COMPLETE = 0x01
 EVT_LE_ADVERTISING_REPORT = 0x02
 
 class Scanner:
 	def __init__(self):
+		logging.addLevelName(25, "NOTICE")
+		logging.addLevelName(55, "ALERT")
 		# Parse config #
 		config = ConfigParser.RawConfigParser()
 		config.file = '/etc/ble_positioning_node/config.conf'
@@ -53,11 +55,14 @@ class Scanner:
 
 		self.log = logging.getLogger('ble-node-log')
 		self.log.setLevel(log_level)
-		self.log.addHandler(AsynchronousLogstashHandler(host, port, database_path='logstash.db'))
+		handler = AsynchronousLogstashHandler(host, port, database_path='logstash.db')
+		handler.setFormatter(ErrorFormatter())
+		self.log.addHandler(handler)
 
 		self.beacon_statistics = dict()
 		self.beacon_list = dict()
 		self.beacon_list_age = time.time()
+
 		self.file_config = config
 
 		FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -117,7 +122,7 @@ class Scanner:
 			timestamp = time.time()
 			self.log.critical("Error getting config. Time: %d. Location: %s. Cause of accident: unknown. "
 					  "Should someone find this record perhaps it will shed light as to what happened here." %
-						(timestamp, self.mac), extra={'timestamp':timestamp, 'mac':self.mac, 'errortext': r.text})
+						(timestamp, self.mac), extra={'timestamp':timestamp, 'mac':self.mac, 'errorinfo': r.text})
 			sys.exit(1)
 
 		tmp = json.loads(r.text)
@@ -127,7 +132,7 @@ class Scanner:
 		self.config['black_list'] = tmp['macBlackList']
 		self.config['node'] = {}
 		self.config['node']['mac'] = self.mac
-		self.info_update_signal = True
+		self.config_update_signal = True
 
 	##############################
 	# Initial setup of bluetooth #
@@ -157,7 +162,7 @@ class Scanner:
 		try:
 			self.hci_toggle_le_scan(0x01)
 		except:
-			self.error_report("Device could not toggle scan", 'critical')
+			self.error_report("Device could not toggle scan", 'critical', exception=True)
 			exit(1)
 
 	################################
@@ -172,7 +177,7 @@ class Scanner:
 		except:
 			timestamp = time.time()
 			self.log.critical("Error: not able to connect to bluetooth device. Time: %d. Location: unknown. Cause of accident: unknown. "
-					  "Should someone find this record perhaps it will shed light as to what happened here." % timestamp, extra={'timestamp':timestamp})
+					  "Should someone find this record perhaps it will shed light as to what happened here." % timestamp, extra={'timestamp':timestamp}, exc_info=True)
 			sys.exit(1)
 		self.mac = self.read_local_bdaddr()
 		self.log.info('Retrieved mac address %s.' % self.mac)
@@ -182,19 +187,19 @@ class Scanner:
 		# try to connect to server, otherwise we could get only 127.0.0.1 which is useless...
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		try:
-			print self.log_handler.hosts
-			s.connect((self.log_handler.hosts[0]['host'],self.log_handler.hosts[0]['port'])) # (LOG_CONN_POINTS)
+			print self.log.handlers[0]._host, self.log.handlers[0]._port
+			s.connect((self.log.handlers[0]._host, self.log.handlers[0]._port))
 			self.remote_ip = s.getsockname()[0]
 			s.close()
 		except:
-			self.error_report("Device could not read it's IP",'error')
+			self.error_report("Device could not read it's IP",'error', exception=True)
 
 	#######################################################
 	# Update state of node (how much do we know about it) #
 	#######################################################
 
 	def state_update(self, state):
-		self.info_update_signal = True
+		self.config_update_signal = True
 		self.state = state
 
 	######################################################
@@ -209,7 +214,7 @@ class Scanner:
 		return "".join('%02x'%i for i in struct.unpack("<BBBBBB", bdaddr_packed[::-1]))
 
 	def hci_disable_le_scan(self):
-		self.hci_toggle_le_scan(self.sock, 0x00)
+		self.hci_toggle_le_scan(0x00)
 
 	def hci_toggle_le_scan(self, enable):
 		cmd_pkt = struct.pack("<BB", enable, 0x00)
@@ -228,7 +233,7 @@ class Scanner:
 		flt = bluez.hci_filter_new()
 		opcode = bluez.cmd_opcode_pack(bluez.OGF_INFO_PARAM, bluez.OCF_READ_BD_ADDR)
 		bluez.hci_filter_set_ptype(flt, bluez.HCI_EVENT_PKT)
-		bluez.hci_filter_set_event(flt, bluez.EVT_CMD_COMPLETE);
+		bluez.hci_filter_set_event(flt, bluez.EVT_CMD_COMPLETE)
 		bluez.hci_filter_set_opcode(flt, opcode)
 		self.sock.setsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, flt )
 		bluez.hci_send_cmd(self.sock, bluez.OGF_INFO_PARAM, bluez.OCF_READ_BD_ADDR )
@@ -258,46 +263,46 @@ class Scanner:
 	# Get information about node configuration #
 	############################################
 
-	def info_get(self):
-		if self.info_update_signal == True or not hasattr(self, 'info'):
-			self.info = copy.deepcopy(self.config)
-			self.info_update_signal = False
-		info = copy.deepcopy(self.info)
+	def debug_get(self):
+		debug = copy.deepcopy(self.config)
 		# Do not send aws keys
-		info.pop('aws_secret', None)
-		info.pop('aws_key', None)
-		info.pop('aws_region', None)
-		info['timestamp'] = time.time()
-		return info
+		debug.pop('aws_secret', None)
+		debug.pop('aws_key', None)
+		debug.pop('aws_region', None)
+		debug.pop('node', None)
+		debug['ble_devices'] = copy.deepcopy(self.beacon_statistics)
+		return debug
+
+	def context_get(self):
+		if self.config_update_signal == True or not hasattr(self, 'info'):
+			self.tmpconfig = copy.deepcopy(self.config)
+			self.config_update_signal = False
+		context = {}
+		context.update(self.tmpconfig['node'])
+		if('debug' in self.tmpconfig):
+			context['debug'] = self.debug_get()
+		# clear statistics here to prevent overflows...
+		self.beacon_statistics.clear()
+		return context
 
 	##########################################
 	# Information and error report to logger #
-	##########################################y
+	##########################################
 
 	def info_report(self, info_string):
-		info = self.info_get()
-		info['info'] = info_string
-		info['type'] = "beacon-info-report"
-#		pp.pprint(info)
-		self.log.info('Info report', extra=info)
+		context = self.context_get()
+		context['type'] = "beacon-info-report"
+		self.log.info(info_string, extra=context)
 
-	def error_report(self, error_string, severity):
-		error = self.info_get()
-		error['error'] = error_string
+	def error_report(self, error_string, severity, exception=False):
+		error = self.context_get()
 		error['type'] = "beacon-error-report"
 		if severity == 'error':
-			self.log.error('Error report', extra=error)
+			self.log.error(error_string, extra=error, exc_info=exception)
 		elif severity == 'warning':
-			self.log.warning('Warning report', extra=error)
+			self.log.warning(error_string, extra=error, exc_info=exception)
 		else:
-			self.log.critical('Critical report', extra=error)
-
-	def statistics_report(self, statistics):
-		stat = self.info_get()
-		stat['statistics'] = statistics
-		stat['type'] = "beacon-statistics-report"
-		pp.pprint(stat)
-		self.log.info('Statistics report', extra=stat)
+			self.log.critical(error_string, extra=error, exc_info=exception)
 
 	#################
 	# Kinesis setup #
@@ -311,7 +316,7 @@ class Scanner:
 				region_name=self.config['aws_region']
 			)
 		except:
-			self.error_report("Kinesis error",'')
+			self.error_report("Kinesis error",'critical', exception=True)
 			sys.exit(1)
 
 	#############################
@@ -435,37 +440,9 @@ class Scanner:
 					self.beacon_list_age = time.time()
 		self.sock.setsockopt(bluez.SOL_HCI, bluez.HCI_FILTER, old_filter)
 
-	########################
-	# Monitor various data #
-	########################
-
-	def monitor_node(self, pid):
-		p = psutil.Process(pid)
-		meminfo = psutil.virtual_memory()
-		swapinfo = psutil.swap_memory()
-		io = psutil.disk_io_counters()
-		process_cpu = p.cpu_percent()
-		cpu = psutil.cpu_percent(0)
-		comp = {'meminfo': dict(meminfo.__dict__), 'swapinfo': dict(swapinfo.__dict__), 'io': dict(io.__dict__), 'process_cpu': process_cpu, 'cpu': cpu}
-		return comp
-
-	def report(self, pid):
-		comp = self.monitor_node(pid)
-		beac = copy.deepcopy(self.beacon_statistics)
-		stat = {'node': comp, 'beacon-counts': beac}
-#		stat = json.loads(json.dumps(stat))
-#		stat = {'cpu': cpu, 'meminfo': meminfo}
-#		pp.pprint(json.dumps(stat))
-#		pp.pprint('----------------')
-#		pp.pprint(dict(io.__dict__))
-#		pp.pprint('----------------')
-		self.beacon_statistics.clear()
-		self.statistics_report(stat)
-
-	def monitor(self):
-		pid = os.getpid()
-		thread_mon = threading.Thread(target=self.report, args=(pid,))
-		thread_mon.start()
+	######################
+	# Monitor node alive #
+	######################
 
 	def alive(self):
 		self.info_report("I'm alive!")
@@ -475,31 +452,37 @@ class Scanner:
 	#################
 
 	def scan(self):
-		print("Program start")
-		self.time_synchronize()
-		self.bluetooth_setup()
-		self.mac_get()
-		self.state_update("beacon-preliminary")	# Now we know at least mac address of device so it is traceable
-		self.node_register()			# Needs to be after mac_get
-		self.config_get()
-		print("Got config")
-		self.state_update("beacon-up")		# Now we have all info from server
-		self.ip_get()
-		self.bluetooth_turn_on()
-		print("Starting scanning")
-		self.kinesis_setup()
+		try:
+			print("Program start")
+			self.time_synchronize()
+			self.bluetooth_setup()
+			self.mac_get()
+			self.state_update("beacon-preliminary")	# Now we know at least mac address of device so it is traceable
+			self.node_register()			# Needs to be after mac_get
+			self.config_get()
+			print("Got config")
+			self.state_update("beacon-up")		# Now we have all info from server
+			self.ip_get()
+			self.bluetooth_turn_on()
+			print("Starting scanning")
+			self.kinesis_setup()
 
-		# init counter and schedule monitoring
-		psutil.cpu_percent(0)
-		schedule.every(30).seconds.do(self.monitor)
-		schedule.every(30).seconds.do(self.config_get)
-		schedule.every(3600).seconds.do(self.time_synchronize)
-		schedule.every(5).seconds.do(self.alive)
+			# init counter and schedule monitoring
+			psutil.cpu_percent(0)
+			schedule.every(30).seconds.do(self.config_get)
+			schedule.every(3600).seconds.do(self.time_synchronize)
+			schedule.every(30).seconds.do(self.alive)
 
-		# Main loop
-		while True:
-			self.parse_packets()
-			schedule.run_pending()
+			# Main loop
+			while True:
+				self.parse_packets()
+				schedule.run_pending()
+
+		# Do not log system exit... Why python, why sys.exit() generates exception?!
+		except SystemExit:
+			pass
+		except:
+			self.error_report('WORLD IS BURNING, UNHANDLED ERROR!', 'critical', True)
 
 def main():
 	scanner = Scanner()
