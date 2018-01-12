@@ -104,7 +104,8 @@ class Scanner:
 		response = requests.request("POST", url, data=payload, headers=headers)
 
 		print response
-		print s
+		print dict(r.headers))
+		print response.text
 		s = json.loads(response.text)
 		defined = False
 		if('errors' in s and s['errors']['code'] == 'mac-already-registered'):
