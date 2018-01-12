@@ -275,7 +275,7 @@ class Scanner:
 
 	def context_get(self):
 		if(not hasattr(self, 'config')):
-			return []
+			return {}
 		if(self.config_update_signal == True or not hasattr(self, 'tmpconfig')):
 			self.tmpconfig = copy.deepcopy(self.config)
 			self.config_update_signal = False
