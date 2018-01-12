@@ -103,16 +103,23 @@ class Scanner:
 
 		response = requests.request("POST", url, data=payload, headers=headers)
 
+		print payload
 		print response
-		print dict(r.headers))
+		print response.status_code
+		print dict(response.headers)
 		print response.text
-		s = json.loads(response.text)
-		defined = False
-		if('errors' in s and s['errors']['code'] == 'mac-already-registered'):
-			defined = True
-		if(response.status_code == requests.codes.ok or defined == True):
-			self.file_config.set('Communication', 'registered', 'true')
-			self.file_config.write(open(self.file_config.file, 'wb'))
+
+		try:
+			s = json.loads(response.text)
+
+			defined = False
+			if('errors' in s and s['errors']['code'] == 'mac-already-registered'):
+				defined = True
+			if(response.status_code == requests.codes.ok or defined == True):
+				self.file_config.set('Communication', 'registered', 'true')
+				self.file_config.write(open(self.file_config.file, 'wb'))
+		except:
+			self.log.critical('Error registering device', extra={'response': response})
 
 
 	##################################
