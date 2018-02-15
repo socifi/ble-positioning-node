@@ -103,12 +103,6 @@ class Scanner:
 
 		response = requests.request("POST", url, data=payload, headers=headers)
 
-		print payload
-		print response
-		print response.status_code
-		print dict(response.headers)
-		print response.text
-
 		try:
 			s = json.loads(response.text)
 
@@ -120,6 +114,7 @@ class Scanner:
 				self.file_config.write(open(self.file_config.file, 'wb'))
 		except:
 			self.log.critical('Error registering device', extra={'response': response})
+			sys.exit(0)
 
 
 	##################################
